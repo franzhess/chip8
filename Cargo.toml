@@ -1,0 +1,22 @@
+[package]
+name = "chip8-rust"
+version = "0.1.0"
+authors = ["zylonenoger <zylonenoger@gmail.com>"]
+edition = "2021"
+description = "A CHIP-8 emulator with a testable Rust core and an SDL2 desktop frontend"
+repository = "https://github.com/franzhess/chip8"
+keywords = ["chip8", "emulator", "sdl2"]
+categories = ["emulators"]
+
+[features]
+default = ["desktop"]
+desktop = ["dep:sdl2"]
+
+[[bin]]
+name = "chip8-rust"
+path = "src/main.rs"
+required-features = ["desktop"]
+
+[dependencies]
+rand = "0.9"
+sdl2 = { version = "0.38", features = ["use-pkgconfig"], optional = true }
