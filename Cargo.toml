@@ -1,0 +1,8 @@
+[package]
+name = "chip8-rust"
+version = "0.1.0"
+authors = ["zylonenoger <zylonenoger@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+ctrlc = "3.1.1"
