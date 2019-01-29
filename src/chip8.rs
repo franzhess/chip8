@@ -4,7 +4,7 @@ use bit_vec::BitVec;
 
 use crate::font::FONT_SET;
 
-const MEMORY_ALIGNMENT: u16 = 2;
+const INSTRUCTION_SIZE: usize = 2;
 const MEMORY_START: usize = 0x0200;
 const MEMORY_SIZE: usize = 0x0FFF; //4K
 
@@ -14,7 +14,7 @@ pub const CHIP8_HEIGHT: usize = 32;
 enum ProgramCounterAction {
   Increment,
   Skip,
-  Jump(u16),
+  Jump(usize),
 }
 
 pub struct TickResult<'a> {
@@ -42,8 +42,9 @@ pub struct Chip8 {
   i: u16,  //one 16bit special register
   delay_timer: u8,  //delay counts down to zero
   sound_timer: u8,  //sound counts down to zero and plays sound
-  program_counter: u16, //program counter
-  stack: Vec<u16>,     //stack
+  program_counter: usize,
+  //program counter
+  stack: Vec<usize>,     //stack
 }
 
 impl Chip8 {
@@ -64,7 +65,7 @@ impl Chip8 {
       i: 0,
       delay_timer: 0,
       sound_timer: 0,
-      program_counter: MEMORY_START as u16,
+      program_counter: MEMORY_START,
       stack: Vec::new(),
     }
   }
@@ -91,22 +92,8 @@ impl Chip8 {
     }
 
     if self.last_tick.elapsed() >= Duration::from_millis(2) {
-      if self.wait_for_input {
-        for (i, b) in self.input.iter().enumerate() {
-          if *b {
-            self.v[self.input_register] = i as u8;
-
-            self.wait_for_input = false;
-            self.input_register = 0;
-          }
-        }
-      } else {
-        match self.execute_operation() {
-          ProgramCounterAction::Increment => self.program_counter += MEMORY_ALIGNMENT,
-          ProgramCounterAction::Skip => self.program_counter += MEMORY_ALIGNMENT * 2,
-          ProgramCounterAction::Jump(adress) => self.program_counter = adress
-        }
-      }
+      self.do_tick();
+      self.last_tick = Instant::now();
     }
 
     TickResult {
@@ -126,6 +113,25 @@ impl Chip8 {
     }
   }
 
+  fn do_tick(&mut self) {
+    if self.wait_for_input {
+      for (i, b) in self.input.iter().enumerate() {
+        if *b {
+          self.v[self.input_register] = i as u8;
+
+          self.wait_for_input = false;
+          self.input_register = 0;
+        }
+      }
+    } else {
+      match self.execute_operation() {
+        ProgramCounterAction::Increment => self.program_counter += INSTRUCTION_SIZE,
+        ProgramCounterAction::Skip => self.program_counter += INSTRUCTION_SIZE * 2,
+        ProgramCounterAction::Jump(adress) => self.program_counter = adress
+      }
+    }
+  }
+
   fn execute_operation(&mut self) -> ProgramCounterAction {
     let op = (self.memory[self.program_counter as usize] as u16) << 8 | self.memory[self.program_counter as usize + 1] as u16;
 
@@ -137,10 +143,11 @@ impl Chip8 {
     );
 
     let addr = (op & 0x0FFF) as usize;
-    let x = ((op & 0x0F00) >> 8) as usize;
-    let y = ((op & 0x00F0) >> 4) as usize;
-    let nibble = (op & 0x000F) as usize;
     let byte = (op & 0x00FF) as usize;
+
+    let x = half_bytes.1 as usize;
+    let y = half_bytes.2 as usize;
+    let nibble = half_bytes.3 as usize;
 
     match half_bytes {
       (0x0, 0x0, 0xE, 0x0) => self.op_00e0(), //clear screen
@@ -191,6 +198,7 @@ impl Chip8 {
 
   fn op_00e0(&mut self, ) -> ProgramCounterAction { //clear screen
     self.screen_buffer = [[false; 64]; 32];
+    self.screen_changed = true;
     ProgramCounterAction::Increment
   }
 
@@ -199,12 +207,12 @@ impl Chip8 {
   }
 
   fn op_1nnn(&mut self, addr: usize) -> ProgramCounterAction { //jump to addr
-    ProgramCounterAction::Jump(addr as u16)
+    ProgramCounterAction::Jump(addr)
   }
 
   fn op_2nnn(&mut self, addr: usize) -> ProgramCounterAction { //call subroutine
-    self.stack.push(self.program_counter + 1);
-    ProgramCounterAction::Jump(addr as u16)
+    self.stack.push(self.program_counter + INSTRUCTION_SIZE);
+    ProgramCounterAction::Jump(addr)
   }
 
   fn op_3xkk(&mut self, x: usize, byte: usize)-> ProgramCounterAction { //skip if vx == kk
@@ -323,7 +331,7 @@ impl Chip8 {
   }
 
   fn op_bnnn(&mut self, addr: usize) -> ProgramCounterAction { //jump to nnn + v0
-    ProgramCounterAction::Jump(addr as u16 + self.v[0] as u16)
+    ProgramCounterAction::Jump(addr + self.v[0] as usize)
   }
 
   fn op_cxkk(&mut self, x: usize, byte: usize) -> ProgramCounterAction { //set vx random byte & kkk

@@ -1,13 +1,13 @@
-use sdl2::Sdl;
-use sdl2::render::Canvas;
-use sdl2::video::Window;
 use sdl2::pixels::Color;
+use sdl2::render::Canvas;
+use sdl2::Sdl;
+use sdl2::video::Window;
 
-use crate::chip8::CHIP8_WIDTH;
 use crate::chip8::CHIP8_HEIGHT;
+use crate::chip8::CHIP8_WIDTH;
 
-const WINDOW_WIDTH: u32 = 800;
-const WINDOW_HEIGHT: u32 = 400;
+const WINDOW_WIDTH: u32 = 960;
+const WINDOW_HEIGHT: u32 = 480;
 
 pub struct Display {
   canvas: Canvas<Window>,
@@ -41,7 +41,7 @@ impl Display {
     self.canvas.set_draw_color(Color::RGB(0, 0, 0));
     self.canvas.clear();
 
-    self.canvas.set_draw_color(Color::RGB(255, 255, 255));
+    self.canvas.set_draw_color(Color::RGB(80, 255, 80));
     for (y, line) in screen_buffer.iter().enumerate() {
       for (x, pixel) in line.iter().enumerate() {
         if *pixel {

@@ -8,7 +8,7 @@ mod sound;
 fn main() {
   let sdl = sdl2::init().unwrap();
 
-  let rom_loader = rom::RomLoader::load("roms/games/Soccer.ch8");
+  let rom_loader = rom::RomLoader::load("roms/programs/Chip8 Picture.ch8");
   let mut display = display::Display::new(&sdl);
   let mut input = input::Input::new(&sdl);
   let mut sound = sound::Sound::new(&sdl);
