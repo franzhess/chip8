@@ -1,51 +1,43 @@
 mod chip8;
+mod rom;
+mod display;
+mod font;
 
-use chip8::Chip8;
-use std::{thread, time};
-use std::fs;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use sdl2::event::Event;
+use sdl2::EventPump;
+use sdl2::keyboard::Keycode;
+
 
 fn main() {
-  let mut rom = fs::read("roms/demos/Trip8 Demo (2008) [Revival Studios].ch8").expect("Failed to load file!");
-  let mut chip8 = Chip8::new(rom);
+  let sdl = sdl2::init().unwrap();
 
-  let running = Arc::new(AtomicBool::new(true));
-  let running_clone = running.clone();
+  let rom_loader = rom::RomLoader::load("roms/demos/Maze (alt) [David Winter, 199x].ch8");
+  let mut display = display::Display::new(&sdl);
 
-  ctrlc::set_handler(move || {
-    running_clone.store(false, Ordering::SeqCst)
-  }).expect("Error setting Ctrl-C handler");
+  let mut chip8 = chip8::Chip8::new();
+  chip8.load(rom_loader.rom);
 
+  let mut event_pump = sdl.event_pump().unwrap();
 
-  let duration = time::Duration::from_millis(16);
-  while running.load(Ordering::SeqCst) {
-    let now = time::Instant::now();
+  while let Ok(input_state) = process_input(&mut event_pump) {
+    let tick_result = chip8.tick(input_state);
 
-    chip8.input = process_input(&chip8.wait_for_input);
-
-    chip8.main_loop();
-
-    draw_screen(&chip8.screen_buffer);
-    if chip8.sound_interrupt {
-      play_sound();
-    }
-
-    let elapsed = now.elapsed();
-    if elapsed < duration { //clamp to 60Hz
-      thread::sleep(duration - elapsed);
+    if tick_result.screen_changed {
+      display.draw_screen(tick_result.screen_buffer);
     }
   }
 }
 
-fn draw_screen(screen_buffer: &[u64]) {
+fn process_input(event_pump: &mut EventPump) -> Result<[bool; 16], &str> {
+  for event in event_pump.poll_iter() {
+    match event {
+      Event::Quit { .. } |
+      Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
+        return Err("Esc")
+      },
+      _ => {}
+    }
+  }
 
-}
-
-fn play_sound() {
-
-}
-
-fn process_input(wait: &bool) -> [bool;16] {
-  [false;16]
+  Ok([false; 16])
 }
