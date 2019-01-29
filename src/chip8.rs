@@ -1,5 +1,8 @@
-use crate::font::FONT_SET;
+use std::time::{Duration, Instant};
+
 use bit_vec::BitVec;
+
+use crate::font::FONT_SET;
 
 const MEMORY_ALIGNMENT: u16 = 2;
 const MEMORY_START: usize = 0x0200;
@@ -30,6 +33,8 @@ pub struct Chip8 {
   //wait for the next keypress
   input_register: usize, // where to put the input when we wait for it
 
+  last_tick: Instant,
+  last_timer_tick: Instant,
 
   memory: [u8; MEMORY_SIZE],
   //memory is 4k
@@ -50,6 +55,9 @@ impl Chip8 {
       wait_for_input: false,
       input: [false; 16],
       input_register: 0,
+
+      last_tick: Instant::now(),
+      last_timer_tick: Instant::now(),
 
       memory: [0; MEMORY_SIZE],
       v: [0; 16],
@@ -77,12 +85,28 @@ impl Chip8 {
     self.input = input;
     self.screen_changed = false;
 
-    self.process_timer();
+    if self.last_timer_tick.elapsed() >= Duration::from_millis(17) {
+      self.process_timer();
+      self.last_timer_tick = Instant::now();
+    }
 
-    match self.execute_operation() {
-      ProgramCounterAction::Increment => self.program_counter += MEMORY_ALIGNMENT,
-      ProgramCounterAction::Skip => self.program_counter += MEMORY_ALIGNMENT * 2,
-      ProgramCounterAction::Jump(adress) => self.program_counter = adress
+    if self.last_tick.elapsed() >= Duration::from_millis(2) {
+      if self.wait_for_input {
+        for (i, b) in self.input.iter().enumerate() {
+          if *b {
+            self.v[self.input_register] = i as u8;
+
+            self.wait_for_input = false;
+            self.input_register = 0;
+          }
+        }
+      } else {
+        match self.execute_operation() {
+          ProgramCounterAction::Increment => self.program_counter += MEMORY_ALIGNMENT,
+          ProgramCounterAction::Skip => self.program_counter += MEMORY_ALIGNMENT * 2,
+          ProgramCounterAction::Jump(adress) => self.program_counter = adress
+        }
+      }
     }
 
     TickResult {
@@ -213,7 +237,7 @@ impl Chip8 {
   }
 
   fn op_7xkk(&mut self, x: usize, byte: usize) -> ProgramCounterAction { //set vx = vx + kk
-    self.v[x] = self.v[x] + byte as u8;
+    self.v[x] = (self.v[x] as usize + byte) as u8;
     ProgramCounterAction::Increment
 
   }
@@ -241,11 +265,7 @@ impl Chip8 {
 
   fn op_8xy4(&mut self, x: usize, y: usize) -> ProgramCounterAction { //set vx = vx + vy, only 8 bits are kept-> ProgramCounterAction { vf = 1 if > 256 else 0
     let sum = self.v[x] as u16 + self.v[y] as u16;
-    if sum > 255 {
-      self.v[0xF] = 1;
-    } else {
-      self.v[0xF] = 0;
-    }
+    self.v[0xF] = if sum > 255 { 1 } else { 0 };
     self.v[x] = (sum & 0x00FF) as u8;
 
     ProgramCounterAction::Increment
@@ -263,12 +283,11 @@ impl Chip8 {
     ProgramCounterAction::Increment
   }
 
-  fn op_8xy6(&mut self, x: usize, y: usize) -> ProgramCounterAction { //set vx = vx / 2; if uneven vf = 1
+  fn op_8xy6(&mut self, x: usize, _y: usize) -> ProgramCounterAction { //set vx = vx / 2; if uneven vf = 1
     self.v[0xF] = self.v[x] & 0b00000001;
     self.v[x] = self.v[x] >> 1;
 
     ProgramCounterAction::Increment
-
   }
 
   fn op_8xy7(&mut self, x: usize, y: usize) -> ProgramCounterAction { //set vx = vy - vx; if vy > vx vf = 1
@@ -283,7 +302,7 @@ impl Chip8 {
     ProgramCounterAction::Increment
   }
 
-  fn op_8xye(&mut self, x: usize, y: usize) -> ProgramCounterAction { //set vx = vx * 2; if most significant bit = 1 then vf = 1
+  fn op_8xye(&mut self, x: usize, _y: usize) -> ProgramCounterAction { //set vx = vx * 2; if most significant bit = 1 then vf = 1
     self.v[0xF] = (self.v[x] & 0b10000000) >> 7;
     self.v[x] = self.v[x] << 1;
 
@@ -329,12 +348,7 @@ impl Chip8 {
       }
     }
 
-    if deleted {
-      self.v[0xF] = 1;
-    } else {
-      self.v[0xF] = 0;
-    }
-
+    self.v[0xF] = if deleted { 1 } else { 0 };
     self.screen_changed = true;
 
     ProgramCounterAction::Increment
@@ -362,42 +376,53 @@ impl Chip8 {
   }
 
   fn op_fx0a(&mut self, x: usize) -> ProgramCounterAction { //wait for keypress and store in vx
+    self.wait_for_input = true;
+    self.input_register = x;
     ProgramCounterAction::Increment
   }
 
   fn op_fx15(&mut self, x: usize) -> ProgramCounterAction { //set delay timer = vx
     self.delay_timer = self.v[x];
     ProgramCounterAction::Increment
-
   }
 
   fn op_fx18(&mut self, x: usize) -> ProgramCounterAction { //set sound timer = vx
     self.sound_timer = self.v[x];
     ProgramCounterAction::Increment
-
   }
 
   fn op_fx1e(&mut self, x: usize) -> ProgramCounterAction { //set i = i + vx
     self.i += self.v[x] as u16;
+    self.v[0xF] = if self.i > 0x0F00 { 1 } else { 0 };
     ProgramCounterAction::Increment
   }
 
   fn op_fx29(&mut self, x: usize) -> ProgramCounterAction { //set i = location of sprite for digit vx
     self.i = self.v[x] as u16 * 5;
     ProgramCounterAction::Increment
-
   }
 
   fn op_fx33(&mut self, x: usize) -> ProgramCounterAction { //set i bcd vx, i = 100, i+1 = 10, i+2 = 1
+    self.memory[self.i as usize] = self.v[x] / 100;
+    self.memory[self.i as usize + 1] = (self.v[x] % 100) / 10;
+    self.memory[self.i as usize + 2] = self.v[x] % 10;
+
     ProgramCounterAction::Increment
   }
 
   fn op_fx55(&mut self, x: usize) -> ProgramCounterAction { //write v0 to vx to memory starting at i
-    ProgramCounterAction::Increment
+    for offset in 0..x {
+      self.memory[self.i as usize + offset] = self.v[offset];
+    }
 
+    ProgramCounterAction::Increment
   }
 
   fn op_fx65(&mut self, x: usize) -> ProgramCounterAction { //read v0 to vx from memory starting at i
+    for offset in 0..x {
+      self.v[offset] = self.memory[self.i as usize + offset];
+    }
+
     ProgramCounterAction::Increment
   }
 }
