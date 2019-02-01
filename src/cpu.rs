@@ -1,7 +1,5 @@
 use std::time::{Duration, Instant};
 
-use bit_vec::BitVec;
-
 const INSTRUCTION_SIZE: usize = 2;
 const MEMORY_START: usize = 0x0200;
 const MEMORY_SIZE: usize = 0x0FFF; //4K
@@ -342,9 +340,11 @@ impl Chip8 {
     let mut deleted = false;
 
     for line in 0..nibble {
-      let byte = BitVec::from_bytes(&[self.memory[self.i as usize + line]]);
       let y = (self.v[y] as usize + line) % CHIP8_HEIGHT;
-      for (offset, bit) in byte.iter().enumerate() {
+      let byte = self.memory[self.i as usize + line];
+
+      for offset in 0..8 {
+        let bit = ((byte >> 7 - offset) & 0b00000001) > 0;
         let x = (self.v[x] as usize + offset) % CHIP8_WIDTH;
 
         let before = self.screen_buffer[y][x];
