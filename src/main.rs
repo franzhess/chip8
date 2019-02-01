@@ -1,19 +1,15 @@
-mod chip8;
-mod rom;
-mod display;
-mod font;
-mod input;
-mod sound;
+mod cpu;
+mod hardware;
 
 fn main() {
   let sdl = sdl2::init().unwrap();
 
-  let rom_loader = rom::RomLoader::load("roms/programs/Chip8 Picture.ch8");
-  let mut display = display::Display::new(&sdl);
-  let mut input = input::Input::new(&sdl);
-  let mut sound = sound::Sound::new(&sdl);
+  let rom_loader = hardware::rom::RomLoader::load("roms/programs/Chip8 Picture.ch8");
+  let mut display = hardware::display::Display::new(&sdl);
+  let mut input = hardware::input::Input::new(&sdl);
+  let mut sound = hardware::sound::Sound::new(&sdl);
 
-  let mut chip8 = chip8::Chip8::new();
+  let mut chip8 = cpu::Chip8::new();
   chip8.load(rom_loader.rom);
 
   while let Ok(input_state) = input.process_input() {
